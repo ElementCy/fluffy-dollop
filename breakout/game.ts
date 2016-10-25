@@ -282,11 +282,17 @@ function gameLoop()
         entity.draw();
     }
 
+    // draw the hud
     var hud: iHud;
     for(var h: number = 0; h < hud_array.length; h++) {
         hud = hud_array[h];
         hud.draw();
     }
+
+    // draw a border around the canvas
+    ctx.strokeStyle = "grey";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, canvas.width, canvas.height);
 }
 
 function keyDownHandler(e: KeyboardEvent) {
@@ -304,6 +310,7 @@ function keyDownHandler(e: KeyboardEvent) {
 }
 
 function keyUpHandler(e: KeyboardEvent) {
+    // 'r' == 82
     if(e.keyCode == 39) {
         paddle.moveRight = false;
     }else if(e.keyCode == 37) {
