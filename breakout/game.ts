@@ -2,23 +2,47 @@
 var canvas: HTMLCanvasElement;
 var ctx: CanvasRenderingContext2D;
 
-var levelToLoad: string = "RRRRRRRRRRRR|BBBBBBBBBBBB|GGGGGGGGGGGG|YYYYYYYYYYYY|WWWWWWWWWWWW";
+var levels: Array<string> = [   "35,35,5,25,10,RRRRRRRRRRRRRR|BBBBBBBBBBBBBB|GGGGGGGGGGGGGG|YYYYYYYYYYYYYY|WWWWWWWWWWWWWW|YYYYYYYYYYYYYY|GGGGGGGGGGGGGG|BBBBBBBBBBBBBB|RRRRRRRRRRRRRR",
+                                "35,35,5,25,10,RRBBRRBBRRBBRR|BBRRBBRRBBRRBB|GGYYGGYYGGYYGG|YYGGYYGGYYGGYY|WWWWWWWWWWWWWW|YYGGYYGGYYGGYY|GGYYGGYYGGYYGG|BBRRBBRRBBRRBB|RRBBRRBBRRBBRR",
+                                "35,35,5,25,10,YYYYYYYYYYYYYY|YY-!W!W-YY-!W!W-YY|YY-!W!W-YY-!W!W-YY|YYYYYYYYYYYYYY|YY--YYYYYY--YY|YYY--YYYY--YYY|YYYY--YY--YYYY|YYYYYY--YYYYYY|YYYYYYYYYYYYYY",
+                                "35,35,5,25,10,@R@R@R@R@R@R@R@R@R@R@R@R@R@R|WWWWWWWWWWWWWW|YYYGGGYYYGGGYY|GGYYYYGGGYYYGG|BBBBBBBBBBBBBB|GGYYYYGGGYYYGG|YYYGGGYYYGGGYY|WWWWWWWWWWWWWW|@R@R@R@R@R@R@R@R@R@R@R@R@R@R",
+                                "35,35,5,25,10,#B@B#B@B#B@B#B@B#B@B#B@B#B@B|RRGGRRGGRRGGRR|GGYYGGYYGGYYGG|YYWWYYWWYYWWYY|!R!RRRRR--RRRR!R!R|YYWWYYWWYYWWYY|GGYYGGYYGGYYGG|RRGGRRGGRRGGRR|WWW@W@WWWW@W@WWWWW",
+                                "35,35,5,25,10,GGWWGGWWGGWWGG|RRGGRRGGRRGGRR|BBRRBBRRBBRRBB|!B!B!B!B!B!B!B!B!B!B!B!B!B!B|--------------|!B!B!B!B!B!B!B!B!B!B!B!B!B!B|RRBBRRBBRRBBRR|BBGGBBGGBBGGBB|GGYYGGYYGGYYGG",
+                                "35,35,5,25,10,#R#B#G#Y#W#R#B#G#Y#W#R#B#G#Y|#W#R#B#G#Y#W#R#B#G#Y#W#R#B#G|#Y#W#R#B#G#Y#W#R#B#G#Y#W#R#B|#G#Y#W#R#B#G#Y#W#R#B#G#Y#W#R|#B#G#Y#W#R#B#G#Y#W#R#B#G#Y#W|#R#B#G#Y#W#R#B#G#Y#W#R#B#G#Y|#W#R#B#G#Y#W#R#B#G#Y#W#R#B#G|#Y#W#R#B#G#Y#W#R#B#G#Y#W#R#B|#G#Y#W#R#B#G#Y#W#R#B#G#Y#W#R" ];
+
+const enum BrickType {
+    Normal,
+    Double,
+    Triple,
+    Unbreakable
+}
 
 // base interface for our entities that we want to draw on the screen
 // and handle in the game.
 interface iEntity {
     draw(): void;
     update(): void;
+    reset(): void;
     x: number;
     y: number;
     velX: number;
     velY: number;
 }
 
+// base interface for all hud
 interface iHud {
     x: number;
     y: number;
     draw(): void;
+}
+
+// base interface for our BrickMap
+interface iBrickMap {
+    brickCount: number;
+    brickArray: Array<iEntity>;
+    loadMap(map: string): void;
+    updateDrawMap(): void;
+    reset(): void;
 }
 
 // class for the ball entity
@@ -76,9 +100,12 @@ class cBall implements iEntity {
                 // check to see if the ball is near the height of the paddle
                 // if so, let's check to see if it is in the same area on the X axis as the paddle,
                 // and check to see if the ball is still above the paddle.
-                if(this.y < paddle.y && this.x > paddle.x && this.x < paddle.x + paddle.width) {
+                if(this.y < paddle.y && this.x + this.radius > paddle.x && this.x - this.radius < paddle.x + paddle.width) {
                     // bounce the ball back up!
-                    this.velY = -this.velY;
+                    // if already going down (if hits paddle at odd angle, and gets stuck, we just want it to go up,
+                    // and not bounce back n forth until out of paddle.)
+                    if(this.velY > 0)
+                        this.velY = -this.velY;
                 }else if(this.y > canvas.height - this.radius) {
                     // we lost a life
                     // reset the ball back to start.
@@ -101,6 +128,7 @@ class cPaddle implements iEntity {
     public width: number = 0;
     public height: number = 0;
     public color: string = "white";
+    public strokeColor: string = "#363636";
     public moveRight: boolean = false;
     public moveLeft: boolean = false;
 
@@ -120,6 +148,9 @@ class cPaddle implements iEntity {
         ctx.rect(this.x, this.y, this.width, this.height);
         ctx.fillStyle = this.color;
         ctx.fill();
+        ctx.strokeStyle = this.strokeColor;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(this.x,this.y,this.width, this.height);
         ctx.closePath();
     }
 
@@ -141,6 +172,10 @@ class cPaddle implements iEntity {
             this.x = 0;
         }
     }
+
+    public reset = (): void => {
+        this.x = 215;
+    }
 }
 
 class cBrick implements iEntity {
@@ -151,10 +186,11 @@ class cBrick implements iEntity {
     public width: number = 0;
     public height: number = 0;
     public color: string = "white";
+    public brickType: BrickType = BrickType.Normal;
     public active: boolean = true;
     public points: number = 0;
 
-    constructor(x: number, y: number, width: number, height: number, points: number, color: string = "white")
+    constructor(x: number, y: number, width: number, height: number, points: number, color: string = "white", brickType: BrickType = BrickType.Normal)
     {
         this.x = x;
         this.y = y;
@@ -162,6 +198,7 @@ class cBrick implements iEntity {
         this.height = height;
         this.points = points;
         this.color = color;
+        this.brickType = brickType;
     }
 
     public draw = (): void => {
@@ -172,18 +209,160 @@ class cBrick implements iEntity {
             ctx.rect(this.x, this.y, this.width, this.height);
             ctx.fillStyle = this.color;
             ctx.fill();
+            if(this.brickType == BrickType.Unbreakable) {
+                ctx.strokeStyle = "#363636";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(this.x,this.y,this.width, this.height);
+            }else if(this.brickType == BrickType.Triple) {
+                ctx.strokeStyle = shadeColor2(ctx.fillStyle, -0.6);
+                ctx.lineWidth = 2;
+                ctx.strokeRect(this.x,this.y,this.width, this.height);
+            }else if(this.brickType == BrickType.Double) {
+                ctx.strokeStyle = shadeColor2(ctx.fillStyle, -0.4);
+                ctx.lineWidth = 2;
+                ctx.strokeRect(this.x,this.y,this.width, this.height);
+            }
             ctx.closePath();
         }
     }
 
     public update = (): void => {
         if(this.active) {
-            if(ball.x > this.x && ball.x < this.x + this.width && ball.y > this.y && ball.y < this.y + this.height) {
+            if(ball.x + ball.radius > this.x && ball.x - ball.radius < this.x + this.width && ball.y + ball.radius > this.y && ball.y - ball.radius < this.y + this.height) {
                 ball.velY = -ball.velY;
-                this.active = false;
-                score.addPoints(this.points);
+
+                if(this.brickType != BrickType.Unbreakable) {
+                    score.addPoints(this.points);
+                }
+
+                if(this.brickType == BrickType.Triple) {
+                    this.brickType = BrickType.Double;
+                }else if(this.brickType == BrickType.Double) {
+                    this.brickType = BrickType.Normal;
+                }else if(this.brickType == BrickType.Normal) {
+                    this.active = false;
+                    brickMap.brickCount--;
+                }
             }
         }
+    }
+
+    public reset = (): void => {
+
+    }
+}
+
+class cBrickMap implements iBrickMap {
+    public brickCount: number = 0;
+    public brickArray: Array<iEntity> = new Array<iEntity>();
+
+    public loadMap = (map: string): void => {
+        var dataArray: Array<string> = map.split(',');
+
+        var xpos: number = parseInt(dataArray[0]);
+        var ypos: number = parseInt(dataArray[1]);
+        var pad: number = parseInt(dataArray[2]);
+        var bwidth: number = parseInt(dataArray[3]);
+        var bheight: number = parseInt(dataArray[4]);
+
+        var brickMap: string = dataArray[5];
+        var brickType: BrickType = BrickType.Normal;
+        var numUnbreakable: number = 0;
+        for(var c: number = 0; c < brickMap.length; c++) {
+            switch(brickMap[c]) {
+                case 'R':
+                {
+                    var b: cBrick = new cBrick(xpos, ypos, bwidth, bheight, 10, "red", brickType);
+                    xpos += bwidth + pad;
+                    this.brickArray.push(b);
+                    brickType = BrickType.Normal;
+                }
+                break;
+                case 'B':
+                {
+                    var b: cBrick = new cBrick(xpos, ypos, bwidth, bheight, 10, "blue", brickType);
+                    xpos += bwidth + pad;
+                    this.brickArray.push(b);
+                    brickType = BrickType.Normal;
+                }
+                break;
+                case 'G':
+                {
+                    var b: cBrick = new cBrick(xpos, ypos, bwidth, bheight, 10, "green", brickType);
+                    xpos += bwidth + pad;
+                    this.brickArray.push(b);
+                    brickType = BrickType.Normal;
+                }
+                break;
+                case 'Y':
+                {
+                    var b: cBrick = new cBrick(xpos, ypos, bwidth, bheight, 10, "yellow", brickType);
+                    xpos += bwidth + pad;
+                    this.brickArray.push(b);
+                    brickType = BrickType.Normal;
+                }
+                break;
+                case 'W':
+                {
+                    var b: cBrick = new cBrick(xpos, ypos, bwidth, bheight, 10, "white", brickType);
+                    xpos += bwidth + pad;
+                    this.brickArray.push(b);
+                    brickType = BrickType.Normal;
+                }
+                break;
+                case '|':
+                {
+                    xpos = 35;
+                    ypos += bheight + pad;
+                    brickType = BrickType.Normal;
+                }
+                break;
+                // brick types come before the color of brick.
+                case '!':
+                {
+                    brickType = BrickType.Unbreakable;
+                    numUnbreakable++;
+                }
+                break;
+                case '@':
+                {
+                    brickType = BrickType.Double;
+                }
+                break;
+                case '#':
+                {
+                    brickType = BrickType.Triple;
+                }
+                break;
+                case '-':
+                {
+                    // empty space
+                    xpos += bwidth + pad;
+                    brickType = BrickType.Normal;
+                }
+                break;
+            }
+        }
+
+        this.brickCount = this.brickArray.length - numUnbreakable;
+    }
+
+    public updateDrawMap = (): void => {
+        var entity: iEntity;
+        for(var b: number = 0; b < this.brickArray.length; b++) {
+            entity = this.brickArray[b];
+            entity.update();
+            entity.draw();
+        }
+        if(this.brickCount <= 0) {
+            levelToLoad++;
+            loadNewLevel();
+        }
+    }
+
+    public reset = (): void => {
+        this.brickArray.length = 0;
+        this.brickCount = 0;
     }
 }
 
@@ -204,14 +383,14 @@ class cScore implements iHud {
         this.totalPoints = 0;
     }
 
-    public addPoints(p: number) {
+    public addPoints = (p: number): void => {
         this.totalPoints += (this.pointMultiplier * p);
     }
 
     public draw = (): void => {
         // draw a the score!
         ctx.font = "16px Arial";
-        ctx.fillStyle = "#0095DD";
+        ctx.fillStyle = "#6495ED";
         ctx.fillText("Score: " + this.totalPoints, this.x, this.y);
     }
 }
@@ -246,14 +425,14 @@ class cLives implements iHud {
         }
     }
     
-    public addLives(n: number) {
+    public addLives = (n: number): void => {
         this.totalLives += n;
     }
 
-    public removeLives(n: number) {
+    public removeLives = (n: number): void => {
         this.totalLives -= n;
         if(this.totalLives < 0) {
-            reloadLevel();
+            resetGame();
         }
     }
 }
@@ -264,6 +443,8 @@ var ball: cBall = new cBall(240, 290, 5);
 var paddle: cPaddle = new cPaddle(215, 300, 50, 10, "gray");
 var score: cScore = new cScore(8, 20);
 var lives: cLives = new cLives(8, 310);
+var brickMap: cBrickMap = new cBrickMap();
+var levelToLoad: number = 0;
 
 function gameLoop()
 {
@@ -281,6 +462,8 @@ function gameLoop()
         entity.update();
         entity.draw();
     }
+
+    brickMap.updateDrawMap();
 
     // draw the hud
     var hud: iHud;
@@ -316,78 +499,45 @@ function keyUpHandler(e: KeyboardEvent) {
     }else if(e.keyCode == 37) {
         paddle.moveLeft = false;
     }else if(e.keyCode == 82) {
-        reloadLevel();
+        resetGame();
     }
 }
 
-function loadLevel(bricks: string) {
-    var xpos: number = 35;
-    var ypos: number = 35;
-    var pad: number = 10;
-    var bwidth: number = 25;
-    var bheight: number = 10;
-
-    for(var c: number = 0; c < bricks.length; c++) {
-        switch(bricks[c]) {
-            case 'R':
-            {
-                var b: cBrick = new cBrick(xpos, ypos, bwidth, bheight, 10, "red");
-                xpos += bwidth + pad;
-                entity_array.push(b);
-            }
-            break;
-            case 'B':
-            {
-                var b: cBrick = new cBrick(xpos, ypos, bwidth, bheight, 10, "blue");
-                xpos += bwidth + pad;
-                entity_array.push(b);
-            }
-            break;
-            case 'G':
-            {
-                var b: cBrick = new cBrick(xpos, ypos, bwidth, bheight, 10, "green");
-                xpos += bwidth + pad;
-                entity_array.push(b);
-            }
-            break;
-            case 'Y':
-            {
-                var b: cBrick = new cBrick(xpos, ypos, bwidth, bheight, 10, "yellow");
-                xpos += bwidth + pad;
-                entity_array.push(b);
-            }
-            break;
-            case 'W':
-            {
-                var b: cBrick = new cBrick(xpos, ypos, bwidth, bheight, 10, "white");
-                xpos += bwidth + pad;
-                entity_array.push(b);
-            }
-            break;
-            case '|':
-            {
-                xpos = 35;
-                ypos += bheight + pad;
-            }
-            break;
-        }
-    }
+function shadeColor2(color, percent) {   
+    var f=parseInt(color.slice(1),16),t=percent<0?0:255,p=percent<0?percent*-1:percent,R=f>>16,G=f>>8&0x00FF,B=f&0x0000FF;
+    return "#"+(0x1000000+(Math.round((t-R)*p)+R)*0x10000+(Math.round((t-G)*p)+G)*0x100+(Math.round((t-B)*p)+B)).toString(16).slice(1);
 }
 
-function reloadLevel() {
+function resetGame() {
     entity_array.length = 0;
     hud_array.length = 0;
     paddle.x = 215;
     ball.reset();
     score.reset();
     lives.reset();
+    brickMap.reset();
     entity_array.push(ball);
     entity_array.push(paddle);
 
     hud_array.push(score);
     hud_array.push(lives);
 
-    loadLevel(levelToLoad);
+    levelToLoad = 0;
+
+    brickMap.loadMap(levels[levelToLoad]);
+}
+
+function loadNewLevel() {
+    paddle.reset();
+    ball.reset();
+    brickMap.reset();
+    if(levelToLoad < levels.length) {
+        brickMap.loadMap(levels[levelToLoad]);
+    }else {
+        ctx.font = "32px Arial";
+        ctx.fillStyle = "white";
+        ctx.fillText("You WIN!!!", canvas.width/2, canvas.height/2);
+    }
 }
 
 window.onload = () => {
@@ -410,7 +560,7 @@ window.onload = () => {
     hud_array.push(score);
     hud_array.push(lives);
 
-    loadLevel(levelToLoad);
+    brickMap.loadMap(levels[levelToLoad]);
 
     // run the game!
     gameLoop();
