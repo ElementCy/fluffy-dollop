@@ -34,6 +34,7 @@ interface iHud {
     x: number;
     y: number;
     draw(): void;
+    reset(): void;
 }
 
 // base interface for our BrickMap
@@ -511,7 +512,7 @@ function shadeColor2(color, percent) {
 function resetGame() {
     entity_array.length = 0;
     hud_array.length = 0;
-    paddle.x = 215;
+    paddle.reset();
     ball.reset();
     score.reset();
     lives.reset();
