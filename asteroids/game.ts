@@ -3,26 +3,26 @@ var canvas: HTMLCanvasElement;
 var ctx: CanvasRenderingContext2D;
 
 if (!Array.prototype.find) {
-  Array.prototype.find = function(predicate) {
-    if (this == null) {
-      throw new TypeError('Array.prototype.find called on null or undefined');
-    }
-    if (typeof predicate !== 'function') {
-      throw new TypeError('predicate must be a function');
-    }
-    var list = Object(this);
-    var length = list.length >>> 0;
-    var thisArg = arguments[1];
-    var value;
+	Array.prototype.find = function(predicate) {
+		if (this == null) {
+			throw new TypeError('Array.prototype.find called on null or undefined');
+		}
+		if (typeof predicate !== 'function') {
+			throw new TypeError('predicate must be a function');
+		}
+		var list = Object(this);
+		var length = list.length >>> 0;
+		var thisArg = arguments[1];
+		var value;
 
-    for (var i = 0; i < length; i++) {
-      value = list[i];
-      if (predicate.call(thisArg, value, i, list)) {
-        return value;
-      }
-    }
-    return undefined;
-  };
+		for (var i = 0; i < length; i++) {
+			value = list[i];
+			if (predicate.call(thisArg, value, i, list)) {
+				return value;
+			}
+		}
+		return undefined;
+	};
 }
 
 interface Array<T> {
@@ -46,6 +46,21 @@ interface iEntity {
 	reset(): void;
 	position: cVector2D;
 	velocity: cVector2D;
+}
+
+interface iRandom {
+	getNumber(min:number, max:number): number;
+}
+
+class cRandom implements iRandom {
+	public getNumber = (min: number, max: number) => {
+		return  Math.random() * (max - min) + min;
+	}
+}
+
+class cRect {
+	public start: cVector2D = new cVector2D(0,0);
+	public end: cVector2D = new cVector2D(0,0);
 }
 
 class cVector2D implements iPoint {
@@ -130,8 +145,17 @@ class cVector2D implements iPoint {
 	public toRadians = (): number => {
 		return -Math.atan2(-this.y, this.x);
 	}
+
 	public copy = (): cVector2D => {
 		return new cVector2D(this.x, this.y);
+	}
+
+	public rotate = (rads: number): cVector2D => {
+		var cos: number = Math.cos(rads);
+		var sin: number = Math.sin(rads)
+		var nx:number = (cos * (this.x)) + (sin * (this.y));
+		var ny:number = (cos * (this.y)) - (sin * (this.x));
+		return new cVector2D(nx, ny);
 	}
 }
 
@@ -140,28 +164,30 @@ class cBullet implements iEntity {
 	public velocity: cVector2D = new cVector2D(0,0);
 	public direction: cVector2D = new cVector2D(0,0);
 	public isAlive: boolean = false;
-	public life: number = 100;
-	public speed: number = 5;
+	public life: number = 50;
+	public speed: number = 10;
 
 	public deploy = (position: cVector2D, direction: cVector2D): void => {
 		this.position = position;
 		this.direction = direction;
 
 		this.velocity = new cVector2D(0,0);
+		this.direction.normalize();
 		this.direction.multiply(this.speed)
 		this.velocity.add(this.direction);
-		this.life = 100;
+		this.life = 50;
 		this.isAlive = true;
 	}
 
 	public draw = (): void => {
 		if(this.isAlive) {
 			ctx.save();
+			ctx.translate(this.position.x, this.position.y);
 			ctx.beginPath();
 			ctx.fillStyle = "white";
 			ctx.lineWidth = 1;
 
-			ctx.fillRect(this.position.x, this.position.y, 2,2);
+			ctx.fillRect(0, 0, 2,2);
 
 			ctx.closePath();
 			ctx.stroke();
@@ -173,6 +199,13 @@ class cBullet implements iEntity {
 		if(this.isAlive) {
 			this.position.add(this.velocity);
 
+			var hit: boolean = asteroidManager.checkCollision(this.position.copy());
+
+			if(hit)
+			{
+				this.reset();
+				return;
+			}
 			// wrap the player in the canvas...
 			if(this.position.x > canvas.width)
 				this.position.x = 0;
@@ -192,7 +225,7 @@ class cBullet implements iEntity {
 	}
 
 	public reset = (): void => {
-
+		this.isAlive = false;
 	}
 }
 
@@ -221,6 +254,54 @@ class cBulletManager {
 				bull.draw();
 			}
 		}
+	}
+}
+
+class cAsteroidManager {
+	public asteroids: Array<cAsteroid> = new Array<cAsteroid>();
+
+	constructor() {
+		for(var ac: number = 0; ac < 15; ac++) {
+			this.asteroids.push(new cAsteroid());
+		}
+	}
+
+	public addAsteroid = (position: cVector2D, asteriodType: AsteroidType): void => {
+		var x = this.asteroids.find(b => !b.isAlive);
+		if(x != undefined) {
+			x.spawn(position, asteriodType);
+		}
+	}
+
+	public updateDraw = (): void => {
+		var roid: cAsteroid;
+		for(var r: number = 0; r < this.asteroids.length; r++) {
+			roid = this.asteroids[r];
+			if(roid.isAlive) {
+				roid.update();
+				roid.draw();
+			}
+		}
+	}
+
+	public checkCollision = (position: cVector2D): boolean => {
+		var roidCheck: cAsteroid;
+		for(var a: number = 0; a < this.asteroids.length; a++) {
+			roidCheck = this.asteroids[a];
+			if(roidCheck.isAlive) {
+				var bound: cRect = roidCheck.calculateCollisionBounds();
+
+				if(position.x > bound.start.x && 
+					position.x < (bound.start.x + bound.end.x) && 
+					position.y > bound.start.y && 
+					position.y < (bound.start.y + bound.end.y)) {
+					roidCheck.onDeath();
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 }
 
@@ -309,7 +390,6 @@ class cShip implements iEntity {
 		}
 
 		if(this.isFiring && this.fireTimer == 0) {
-			console.log("we fired!");
 			bulletManager.addBullet(this.position.copy(), this.direction.copy());
 			this.fireTimer = 10;
 		}
@@ -349,8 +429,11 @@ class cAsteroid implements iEntity {
 	public pointList: Array<cVector2D> = new Array<cVector2D>();
 	public asteroidType: AsteroidType = AsteroidType.Small;
 	public size: number = 0;
+	public isAlive: boolean = false;
+	public bounds: cRect = new cRect();
+	public colBounds: cRect = new cRect();
 
-	constructor(position: cVector2D, asteroidType: AsteroidType) {
+	public spawn = (position: cVector2D, asteroidType: AsteroidType): void => {
 		this.position = position;
 		this.asteroidType = asteroidType;
 
@@ -368,80 +451,117 @@ class cAsteroid implements iEntity {
 
 		this.buildAsteroid();
 
-		this.rotationSpeed = Math.random() * (0.06 - 0.02) + 0.02;
+		this.rotationSpeed = rnd.getNumber(0.02, 0.06);
 
-		this.velocity.x = Math.random() * (1 - 0.1) + 0.1;
-		this.velocity.y = Math.random() * (1 - 0.1) + 0.1;
+		this.velocity.x = rnd.getNumber(0.1, 1);
+		this.velocity.y = rnd.getNumber(0.1, 1);
 
-		if((Math.random() * 100) > 50) {
+		if(rnd.getNumber(0, 100) > 50) {
 			this.velocity.x = -this.velocity.x;
 		}
-		if((Math.random() * 100) > 50) {
+		if(rnd.getNumber(0, 100) > 50) {
 			this.velocity.y = -this.velocity.y;
 		}
+
+		this.isAlive = true;
 	}
 
 	private buildAsteroid = (): void => {
 
-		var x: number = Math.round(Math.random() * this.size - this.size / 2);
-		var y: number = Math.round(Math.random() * this.size - this.size / 2);
+		var scale: number = this.size / 6;
 
-		this.pointList.push(new cVector2D(x + 1 * this.size, y + 2 * this.size));
+		var cx: cVector2D = new cVector2D(0,0);
+		var cy: cVector2D = new cVector2D(0,0);
 
-		x = Math.round(Math.random() * this.size - this.size / 2);
-		y = Math.round(Math.random() * this.size - this.size / 2);
+		var x: number = -4 * scale;
+		var y: number = -15 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
+		y += 10 * scale;
+		x += 25 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
+		y += 2 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
+		x -= 5 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
+		y += 4 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
+		x += 5 * scale;
+		y += 7 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
+		y += 7 * scale;
+		x -= 12 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
+		x -= 13 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
+		y -= 5 * scale;
+		x -= 5 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
+		y -= 20 * scale;
+		x -= 12 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
+		y -= 5 * scale;
+		x += 15 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
+		x += 2 * scale;
+		if(x < cx.x) cx.x = x;
+		if(x > cx.y) cx.y = x;
+		if(y < cy.x) cy.x = y;
+		if(y > cy.y) cy.y = y;
+		this.pointList.push(new cVector2D(x, y));
 
-		this.pointList.push(new cVector2D(x - 1 * this.size, y + 2 * this.size));
-
-		x = Math.round(Math.random() * this.size - this.size / 2);
-		y = Math.round(Math.random() * this.size - this.size / 2);
-
-		this.pointList.push(new cVector2D(x - 2 * this.size, y + 3 * this.size));
-
-		x = Math.round(Math.random() * this.size - this.size / 2);
-		y = Math.round(Math.random() * this.size - this.size / 2);
-
-		this.pointList.push(new cVector2D(x - 3 * this.size, y + this.size));
-
-		x = Math.round(Math.random() * this.size - this.size / 2);
-		y = Math.round(Math.random() * this.size - this.size / 2);
-
-		this.pointList.push(new cVector2D(x - 4 * this.size, y + this.size));
-
-		x = Math.round(Math.random() * this.size - this.size / 2);
-		y = Math.round(Math.random() * this.size - this.size / 2);
-
-		this.pointList.push(new cVector2D(x - 1 * this.size, y - 3 * this.size));
-
-		x = Math.round(Math.random() * this.size - this.size / 2);
-		y = Math.round(Math.random() * this.size - this.size / 2);
-
-		this.pointList.push(new cVector2D(x + 2 * this.size, y - 4 * this.size));
-
-		x = Math.round(Math.random() * this.size - this.size / 2);
-		y = Math.round(Math.random() * this.size - this.size / 2);
-
-		this.pointList.push(new cVector2D(x + 2 * this.size, y - 3 * this.size));
-
-		x = Math.round(Math.random() * this.size - this.size / 2);
-		y = Math.round(Math.random() * this.size - this.size / 2);
-
-		this.pointList.push(new cVector2D(x + 4 * this.size, y - 2 * this.size));
-
-		x = Math.round(Math.random() * this.size - this.size / 2);
-		y = Math.round(Math.random() * this.size - this.size / 2);
-
-		this.pointList.push(new cVector2D(x + 4 * this.size, y + this.size));
-
-		x = Math.round(Math.random() * this.size - this.size / 2);
-		y = Math.round(Math.random() * this.size - this.size / 2);
-
-		this.pointList.push(new cVector2D(x + 3 * this.size, y + 2 * this.size));
+		
+		this.bounds.start.x = cx.x;
+		this.bounds.start.y = cy.x;
+		this.bounds.end.x = Math.abs(cx.x) + Math.abs(cx.y);
+		this.bounds.end.y = Math.abs(cy.x) + Math.abs(cy.y);
 	}
 
 	public draw = (): void => {
 		ctx.save();
-		//ctx.fillRect(this.position.x, this.position.y, 1, 1);
 		ctx.translate(this.position.x, this.position.y);
 		ctx.rotate(this.rotation);
 		ctx.beginPath();
@@ -473,17 +593,52 @@ class cAsteroid implements iEntity {
 			this.position.y = 0;
 		else if(this.position.y < 0)
 			this.position.y = canvas.height;
-		
 	}
 
 	public reset = (): void => {
+		this.pointList.length = 0;
+		this.isAlive = false;
+	}
 
+	public onDeath = (): void => {
+		if(this.asteroidType == AsteroidType.Large) {
+			asteroidManager.addAsteroid(this.position.copy(), AsteroidType.Medium);
+			asteroidManager.addAsteroid(this.position.copy(), AsteroidType.Medium);
+			asteroidManager.addAsteroid(this.position.copy(), AsteroidType.Small);
+		}else if (this.asteroidType == AsteroidType.Medium) {
+			var n:number = rnd.getNumber(2, 5);
+
+			for(var sn: number = 0; sn < n; sn++) {
+				asteroidManager.addAsteroid(this.position.copy(), AsteroidType.Small);
+			}
+		}
+		this.reset();
+	}
+
+	public calculateCollisionBounds = (): cRect => {
+		var topLeft: cVector2D = this.bounds.start.rotate(this.rotation);
+		var topRight: cVector2D = new cVector2D(this.bounds.start.x + this.bounds.end.x, this.bounds.start.y).rotate(this.rotation);
+		var bottomLeft: cVector2D = new cVector2D(this.bounds.start.x, this.bounds.start.y + this.bounds.end.y).rotate(this.rotation);
+		var bottomRight: cVector2D = new cVector2D(this.bounds.start.x + this.bounds.end.x,this.bounds.start.y + this.bounds.end.y).rotate(this.rotation);
+
+		var minX: number = Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x);
+		var minY: number = Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y);
+		var maxX: number = Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x);
+		var maxY: number = Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y);
+
+		this.colBounds.start.x = minX + this.size + this.position.x;
+		this.colBounds.start.y = minY + this.size + this.position.y;
+		this.colBounds.end.x = maxX - minX - (this.size * 2);
+		this.colBounds.end.y = maxY - minY - (this.size * 2);
+		return this.colBounds;
 	}
 }
 
 var playerShip: cShip = new cShip(new cVector2D(200, 100));
-var asteroids_array: Array<iEntity> = new Array<iEntity>();
 var bulletManager: cBulletManager = new cBulletManager();
+var asteroidManager: cAsteroidManager = new cAsteroidManager();
+var rnd: cRandom = new cRandom();
+var debugText: string = "";
 
 function gameLoop() {
     // lets keep the game loop going!
@@ -498,12 +653,15 @@ function gameLoop() {
 
 	bulletManager.updateDraw();
 
-	var entity: iEntity;
-	for(var r: number = 0; r < asteroids_array.length; r++) {
-        entity = asteroids_array[r];
-		entity.update();
-        entity.draw();
-    }
+	asteroidManager.updateDraw();
+
+	if(debugText.length > 0) {
+        // draw a the score!
+        ctx.font = "10px Arial";
+        ctx.fillStyle = "white";
+        ctx.fillText(debugText, 10, 30);
+
+	}
 }
 
 function keyDownHandler(e: KeyboardEvent) {
@@ -511,6 +669,7 @@ function keyDownHandler(e: KeyboardEvent) {
     // left arrow == 37
 	// up arrow == 38
 	// down arrow == 40
+	// space bar == 32
     if(e.keyCode == 39) {
         playerShip.rotateRight = true;
     }else if(e.keyCode == 37) {
@@ -547,12 +706,10 @@ window.onload = () => {
     document.addEventListener('keydown', keyDownHandler);
     document.addEventListener('keyup', keyUpHandler);
 
-	var a: cAsteroid = new cAsteroid(new cVector2D(50, 175), AsteroidType.Small);
-	asteroids_array.push(a);
-	var a2: cAsteroid = new cAsteroid(new cVector2D(50, 175), AsteroidType.Medium);
-	asteroids_array.push(a2);
-	var a3: cAsteroid = new cAsteroid(new cVector2D(50, 175), AsteroidType.Large);
-	asteroids_array.push(a3);
+	asteroidManager.addAsteroid(new cVector2D(50,175), AsteroidType.Small);
+	asteroidManager.addAsteroid(new cVector2D(50,175), AsteroidType.Medium);
+	asteroidManager.addAsteroid(new cVector2D(50,175), AsteroidType.Large);
+
 
 	gameLoop();
 }
