@@ -5,7 +5,7 @@ var ctx: CanvasRenderingContext2D;
 if (!Array.prototype.find) {
 	Array.prototype.find = function(predicate) {
 		if (this == null) {
-			throw new TypeError('Array.prototype.find called on null or undefined');
+			throw new TypeError('Array.prototype.find called on null or undefined!');
 		}
 		if (typeof predicate !== 'function') {
 			throw new TypeError('predicate must be a function');
@@ -634,7 +634,7 @@ class cAsteroid implements iEntity {
 	}
 }
 
-var playerShip: cShip = new cShip(new cVector2D(200, 100));
+var playerShip: cShip;
 var bulletManager: cBulletManager = new cBulletManager();
 var asteroidManager: cAsteroidManager = new cAsteroidManager();
 var rnd: cRandom = new cRandom();
@@ -701,6 +701,8 @@ window.onload = () => {
     // grab our canvas, and get a 2d context
     canvas = <HTMLCanvasElement>document.getElementById('gameCanvas');
     ctx = canvas.getContext("2d");
+
+	 playerShip= new cShip(new cVector2D(canvas.width/2, canvas.height/2));
 
     // let's handle the user input
     document.addEventListener('keydown', keyDownHandler);
